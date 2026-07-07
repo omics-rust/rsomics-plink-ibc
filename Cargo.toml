@@ -1,6 +1,6 @@
 [package]
 name = "rsomics-plink-ibc"
-version = "0.1.0"
+version = "0.1.1"
 description = "PLINK1 method-of-moments inbreeding coefficients Fhat1/Fhat2/Fhat3 per sample (plink --ibc)"
 edition = "2024"
 rust-version = "1.91"

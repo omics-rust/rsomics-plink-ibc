@@ -7,8 +7,14 @@
 //!   Fhat2 = 1 - x(2-x) / d                       excess homozygosity (= --het F)
 //!   Fhat3 = (x^2 - (1+2p)x + 2p^2) / d           correlation of uniting gametes
 //! each averaged over the sample's `NOMISS` markers.
+//!
+//! A marker whose founders are monomorphic (`d == 0`) still counts: PLINK adds a
+//! fixed per-non-missing-sample contribution of `Fhat1 += -1`, `Fhat2 += 0`,
+//! `Fhat3 += 0` and includes it in `NOMISS`. Only all-missing markers are skipped.
 
 #![allow(clippy::cast_precision_loss)]
+
+pub mod fileset;
 
 use rayon::prelude::*;
 use rsomics_pgen::Pgen;
@@ -123,6 +129,18 @@ fn variant_table(p: f64, d: f64) -> [[f64; 4]; 4] {
     t
 }
 
+/// Contribution slots for a monomorphic marker (founder `d == 0`). PLINK gives
+/// every non-missing sample a flat `Fhat1 = -1`, `Fhat2 = 0`, `Fhat3 = 0` and
+/// counts it toward `NOMISS`; missing (`0b01`) contributes nothing.
+fn monomorphic_table() -> [[f64; 4]; 4] {
+    let present = [-1.0, 0.0, 0.0, 1.0];
+    let mut t = [[0.0; 4]; 4];
+    t[0b00] = present;
+    t[0b10] = present;
+    t[0b11] = present;
+    t
+}
+
 /// Compute the per-sample `--ibc` records.
 #[must_use]
 pub fn ibc(pgen: &Pgen) -> Vec<IbcRecord> {
@@ -170,10 +188,11 @@ pub fn ibc(pgen: &Pgen) -> Vec<IbcRecord> {
         }
         let p = f64::from(a1) / f64::from(n_obs);
         let d = 2.0 * p * (1.0 - p);
-        if d == 0.0 {
-            return acc;
-        }
-        let t = variant_table(p, d);
+        let t = if d == 0.0 {
+            monomorphic_table()
+        } else {
+            variant_table(p, d)
+        };
         let slots = &mut acc.0;
 
         for (byte_idx, &b) in row[..full_bytes].iter().enumerate() {

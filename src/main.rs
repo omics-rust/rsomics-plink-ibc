@@ -1,6 +1,6 @@
+use anyhow::bail;
 use clap::Parser;
-use rsomics_pgen::Pgen;
-use rsomics_plink_ibc::{ibc, write_ibc};
+use rsomics_plink_ibc::{fileset, ibc, write_ibc};
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::path::PathBuf;
@@ -41,7 +41,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         .build_global()
         .ok();
 
-    let pgen = Pgen::load(&cli.bfile)?;
+    let pgen = fileset::load(&cli.bfile)?;
+    if pgen.n_samples() < 2 {
+        bail!("At least 2 people required for pairwise analysis.");
+    }
     let records = ibc(&pgen);
 
     match cli.out {

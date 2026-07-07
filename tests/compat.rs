@@ -104,6 +104,57 @@ fn header_is_plink_shape() {
 }
 
 #[test]
+fn monomorphic_markers_counted_like_plink() {
+    // A monomorphic marker is not skipped: PLINK adds Fhat1 += -1, Fhat2/Fhat3
+    // += 0 and includes it in NOMISS. The `mono` fixture is one polymorphic plus
+    // one monomorphic marker; the golden is PLINK 1.9 output.
+    let ours = run_ours_on(&golden_dir().join("mono"));
+    let golden =
+        std::fs::read_to_string(golden_dir().join("mono.ibc.golden")).expect("read mono golden");
+    assert_fields_equal(&ours, &golden);
+}
+
+#[test]
+fn missing_sex_minus9_is_accepted() {
+    // PLINK treats a `-9` sex code as ambiguous-but-loaded and still runs --ibc;
+    // a strict sex parse must not reject the fileset.
+    let ours = run_ours_on(&golden_dir().join("nosex"));
+    let golden =
+        std::fs::read_to_string(golden_dir().join("nosex.ibc.golden")).expect("read nosex golden");
+    assert_fields_equal(&ours, &golden);
+}
+
+#[test]
+fn single_sample_fails_loud_and_writes_no_ibc() {
+    // PLINK: "Error: At least 2 people required for pairwise analysis." and no
+    // .ibc is produced. We must fail non-zero and not emit a record.
+    let tmp = tempfile::Builder::new()
+        .prefix("plink-ibc-single-")
+        .tempdir_in(std::env::var("TMPDIR").unwrap_or_else(|_| "/tmp".into()))
+        .expect("tempdir");
+    let out_prefix = tmp.path().join("out");
+    let output = Command::new(ours())
+        .arg(golden_dir().join("single").to_string_lossy().into_owned())
+        .arg("--out")
+        .arg(out_prefix.to_string_lossy().into_owned())
+        .output()
+        .expect("run rsomics-plink-ibc");
+    assert!(
+        !output.status.success(),
+        "expected failure on single-sample fileset"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("At least 2 people required for pairwise analysis."),
+        "stderr should carry PLINK's message, got: {stderr}"
+    );
+    assert!(
+        !out_prefix.with_extension("ibc").exists(),
+        "no .ibc must be written for a single-sample fileset"
+    );
+}
+
+#[test]
 fn default_matches_live_plink() {
     if !plink_available() {
         eprintln!("plink not on PATH; skipping live differential");
